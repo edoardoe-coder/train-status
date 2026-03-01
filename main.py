@@ -9,7 +9,16 @@ from fastapi import FastAPI, HTTPException, Query
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="ViaggiaTreno AI Proxy")
+app = FastAPI(
+    title="ViaggiaTreno AI Proxy",
+    description=(
+        "Real-time Italian train information powered by ViaggiaTreno. "
+        "Use get-train-status to check a specific train by number. "
+        "Use get-departures to see all trains leaving a station right now. "
+        "Use search-trains to find trains between two stations on a given date or time. "
+        "Station codes follow the ViaggiaTreno format (e.g. S01700 = Milano Centrale, S08409 = Roma Termini)."
+    ),
+)
 
 BASE_URL = "http://www.viaggiatreno.it/infomobilita/resteasy/viaggiatreno"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
@@ -117,7 +126,17 @@ def _fetch_train_details(session: requests.Session, train_number: int | str) -> 
     return details.json()
 
 
-@app.get("/get-train-status")
+@app.get(
+    "/get-train-status",
+    summary="Get real-time status of a specific train",
+    description=(
+        "Use this when the user asks about a specific train by number — its current delay, where it is right now, "
+        "what platform it departs from, and upcoming stops with scheduled vs actual times. "
+        "Requires the numeric train number (e.g. 9663 for FR 9663). "
+        "Returns: origin, destination, delay in minutes, current status (ON_TIME / DELAYED / CANCELLED / NOT_YET_DEPARTED), "
+        "last detected position, and up to 5 stops with scheduled and actual times."
+    ),
+)
 async def get_train_status(number: str = Query(..., description="Train number, e.g. 9604")):
     logger.info(f"Status request for train: {number}")
     try:
@@ -155,7 +174,18 @@ async def get_train_status(number: str = Query(..., description="Train number, e
         raise HTTPException(status_code=500, detail="The train service is temporarily unreachable.")
 
 
-@app.get("/get-departures")
+@app.get(
+    "/get-departures",
+    summary="Get current departures from a station",
+    description=(
+        "Use this when the user asks what trains are leaving from a given station right now. "
+        "Requires the station code (e.g. S01700 for Milano Centrale). "
+        "Returns a list of all imminent departures with: train number and category (Frecciarossa, Regionale, etc.), "
+        "final destination, scheduled departure time, estimated departure time accounting for delay, "
+        "delay in minutes, departure platform, and current status. "
+        "Always call this before search-trains if the user only asks 'what trains leave from X'."
+    ),
+)
 async def get_departures(station: str = Query(..., description="Station code, e.g. S01700")):
     logger.info(f"Departures request for station: {station}")
     try:
@@ -190,7 +220,22 @@ async def get_departures(station: str = Query(..., description="Station code, e.
         raise HTTPException(status_code=500, detail="The train service is temporarily unreachable.")
 
 
-@app.get("/search-trains")
+@app.get(
+    "/search-trains",
+    summary="Search trains between two stations",
+    description=(
+        "Use this when the user wants to travel from station A to station B and asks which trains are available, "
+        "what time they arrive, or whether there are options at a specific time or day. "
+        "Requires: from_station as a station code (e.g. S01700), to_station as a plain name (e.g. ROMA or FIRENZE). "
+        "The optional 'when' parameter accepts natural Italian or numeric formats: "
+        "'domani' (tomorrow), 'dopodomani' (day after tomorrow), '15/03' or '15/03/2026' (specific date), "
+        "'15:00' (specific time today), or combinations like 'domani 15:00' or '15/03 09:30'. "
+        "Without 'when', or with a date only, it scans the full day in 4 time windows and deduplicates results. "
+        "With a specific time, it returns only trains departing around that time. "
+        "Each result includes: train number and category, departure time, arrival time at destination, "
+        "current delay, departure platform, final destination, and whether the destination is an intermediate stop."
+    ),
+)
 async def search_trains(
     from_station: str = Query(..., description="Departure station code, e.g. S01700"),
     to_station: str = Query(..., description="Destination station name, e.g. ROMA"),
