@@ -243,6 +243,7 @@ async def search_trains(
 ):
     logger.info(f"Search trains {from_station} → {to_station}, when={when}")
 
+    from_station = from_station.upper()
     to_name = to_station.upper()
 
     def fetch_departures(query_date: datetime) -> list:
